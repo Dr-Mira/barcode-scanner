@@ -10,6 +10,48 @@ import numpy as np
 from pylibdmtx.pylibdmtx import decode
 from typing import Dict, List, Tuple, Optional
 import os
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from functools import partial
+
+# Get number of available CPU cores for parallel processing
+MAX_WORKERS = multiprocessing.cpu_count()
+
+
+def _decode_barcode_worker(roi_data: Tuple[int, int, np.ndarray]) -> Tuple[int, int, Optional[str]]:
+    """
+    Worker function for parallel barcode decoding.
+    Must be at module level for multiprocessing pickling.
+    
+    Args:
+        roi_data: Tuple of (row_idx, col_idx, roi_image)
+        
+    Returns:
+        Tuple of (row_idx, col_idx, decoded_barcode_or_None)
+    """
+    row_idx, col_idx, roi = roi_data
+    
+    # Try different preprocessing approaches
+    attempts = [
+        roi,  # Original
+        cv2.resize(roi, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),  # Upscaled
+        cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2),  # Thresholded
+        cv2.bitwise_not(roi),  # Inverted
+    ]
+    
+    for i, attempt in enumerate(attempts):
+        try:
+            results = decode(attempt, timeout=50)
+            if results:
+                return (row_idx, col_idx, results[0].data.decode('utf-8'))
+        except Exception:
+            continue
+        finally:
+            # Clean up intermediate arrays
+            if i > 0 and attempt is not None:
+                del attempt
+    
+    return (row_idx, col_idx, None)
 
 
 class BarcodeScanner:
@@ -214,15 +256,16 @@ class BarcodeScanner:
         return None
     
     def scan_plate(self, image_path: str, apply_distortion_correction: bool = True,
-                   k1: float = -0.3, k2: float = 0.1) -> Dict[str, Optional[str]]:
+                   k1: float = -0.3, k2: float = 0.1, max_workers: int = None) -> Dict[str, Optional[str]]:
         """
-        Scan a 96-well plate image for DataMatrix barcodes.
+        Scan a 96-well plate image for DataMatrix barcodes using parallel processing.
         
         Args:
             image_path: Path to the image file
             apply_distortion_correction: Whether to apply lens distortion correction
             k1: Primary distortion coefficient
             k2: Secondary distortion coefficient
+            max_workers: Number of parallel workers (defaults to all CPU cores)
             
         Returns:
             Dictionary mapping well positions (e.g., 'A1') to barcode values
@@ -242,8 +285,9 @@ class BarcodeScanner:
         # Detect well grid
         wells = self.detect_wells_grid(gray)
         
-        # Scan each well
-        results = {}
+        # Prepare data for parallel processing
+        roi_data_list = []
+        well_ids = []
         for i, (x, y, w, h) in enumerate(wells):
             # Calculate well position (A1, A2, etc.)
             row_idx = i // self.cols
@@ -256,16 +300,37 @@ class BarcodeScanner:
             
             # Extract ROI
             roi = gray[y:y+h, x:x+w]
-            
-            # Try to decode barcode
-            barcode = self.decode_barcode(roi)
-            results[well_id] = barcode
+            roi_data_list.append((row_idx, col_idx, roi))
+            well_ids.append(well_id)
         
+        # Use parallel processing with all available CPU cores
+        workers = max_workers if max_workers is not None else MAX_WORKERS
+        results = {}
+        
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            # Submit all tasks
+            future_to_index = {
+                executor.submit(_decode_barcode_worker, roi_data): i 
+                for i, roi_data in enumerate(roi_data_list)
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_index):
+                i = future_to_index[future]
+                try:
+                    row_idx, col_idx, barcode = future.result()
+                    results[well_ids[i]] = barcode
+                except Exception as e:
+                    print(f"Error decoding well {well_ids[i]}: {e}")
+                    results[well_ids[i]] = None
+        
+        # Force garbage collection after parallel processing
+        gc.collect()
         return results
 
     def scan_frame(self, frame: np.ndarray, apply_distortion_correction: bool = False,
-                   k1: float = -0.15, k2: float = 0.05) -> Dict[str, Optional[str]]:
-        """Scan a single in-memory frame."""
+                   k1: float = -0.15, k2: float = 0.05, max_workers: int = None) -> Dict[str, Optional[str]]:
+        """Scan a single in-memory frame using parallel processing."""
         working = frame.copy()
         if apply_distortion_correction:
             working = self.correct_lens_distortion(working, k1, k2)
@@ -273,14 +338,41 @@ class BarcodeScanner:
         gray = self.preprocess_image(working)
         wells = self.detect_wells_grid(gray)
 
-        results = {}
+        # Prepare data for parallel processing
+        roi_data_list = []
+        well_ids = []
         for i, (x, y, w, h) in enumerate(wells):
             row_idx = i // self.cols
             col_idx = i % self.cols
             actual_col = self.cols - col_idx
             well_id = f"{self.ROWS[row_idx]}{actual_col}"
             roi = gray[y:y + h, x:x + w]
-            results[well_id] = self.decode_barcode(roi)
+            roi_data_list.append((row_idx, col_idx, roi))
+            well_ids.append(well_id)
+
+        # Use parallel processing with all available CPU cores
+        workers = max_workers if max_workers is not None else MAX_WORKERS
+        results = {}
+        
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            # Submit all tasks
+            future_to_index = {
+                executor.submit(_decode_barcode_worker, roi_data): i 
+                for i, roi_data in enumerate(roi_data_list)
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_index):
+                i = future_to_index[future]
+                try:
+                    row_idx, col_idx, barcode = future.result()
+                    results[well_ids[i]] = barcode
+                except Exception as e:
+                    print(f"Error decoding well {well_ids[i]}: {e}")
+                    results[well_ids[i]] = None
+
+        # Force garbage collection after parallel processing
+        gc.collect()
         return results
 
     def build_focus_composite(self, frames: List[np.ndarray]) -> np.ndarray:
@@ -306,8 +398,8 @@ class BarcodeScanner:
         return np.clip(composite, 0, 255).astype(np.uint8)
 
     def scan_frame_stack(self, frames: List[np.ndarray], apply_distortion_correction: bool = False,
-                         k1: float = -0.15, k2: float = 0.05, progress_callback=None):
-        """Scan several frames and merge the best per-well results."""
+                         k1: float = -0.15, k2: float = 0.05, progress_callback=None, max_workers: int = None):
+        """Scan several frames and merge the best per-well results using parallel processing."""
         if not frames:
             raise ValueError("No captured frames available for scanning")
 
@@ -329,6 +421,7 @@ class BarcodeScanner:
                 apply_distortion_correction=apply_distortion_correction,
                 k1=k1,
                 k2=k2,
+                max_workers=max_workers,
             )
             decoded_count = sum(1 for value in frame_results.values() if value)
             metadata.append({
@@ -358,7 +451,7 @@ class BarcodeScanner:
                              apply_distortion_correction: bool = False,
                              k1: float = -0.15, k2: float = 0.05,
                              progress_callback=None, best_frames_dir: Optional[str] = None,
-                             max_cached_frames: int = 5):
+                             max_cached_frames: int = 5, max_workers: int = None):
         """
         Memory-efficient streaming scan that processes frames one at a time.
 
@@ -421,6 +514,7 @@ class BarcodeScanner:
                 apply_distortion_correction=apply_distortion_correction,
                 k1=k1,
                 k2=k2,
+                max_workers=max_workers,
             )
             
             decoded_count = sum(1 for value in frame_results.values() if value)
@@ -505,7 +599,7 @@ class BarcodeScanner:
     def scan_plate_from_files_streaming(self, image_paths: List[str],
                                         apply_distortion_correction: bool = False,
                                         k1: float = -0.15, k2: float = 0.05,
-                                        progress_callback=None) -> Tuple[Dict, List, np.ndarray]:
+                                        progress_callback=None, max_workers: int = None) -> Tuple[Dict, List, np.ndarray]:
         """
         Scan multiple images from disk in streaming fashion.
         Processes one image at a time to minimize memory usage.
@@ -533,7 +627,8 @@ class BarcodeScanner:
             apply_distortion_correction=apply_distortion_correction,
             k1=k1,
             k2=k2,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            max_workers=max_workers
         )
     
     def scan_plate_adaptive(self, image_path: str) -> Dict[str, Optional[str]]:

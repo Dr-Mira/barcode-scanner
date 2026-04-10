@@ -1085,6 +1085,10 @@ class BarcodeScannerGUI:
 
 
 if __name__ == "__main__":
+    # Required for Windows multiprocessing support
+    import multiprocessing
+    multiprocessing.freeze_support()
+    
     root = tk.Tk()
 
     try:
