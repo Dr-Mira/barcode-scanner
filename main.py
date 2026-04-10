@@ -5,6 +5,7 @@ Supports bottom-view photos (A1-H12 layout).
 """
 
 import cv2
+import gc
 import numpy as np
 from pylibdmtx.pylibdmtx import decode
 from typing import Dict, List, Tuple, Optional
@@ -178,30 +179,38 @@ class BarcodeScanner:
     def decode_barcode(self, roi: np.ndarray) -> Optional[str]:
         """
         Decode DataMatrix barcode from ROI.
-        
+
         Args:
             roi: Region of interest containing potential barcode
-            
+
         Returns:
             Decoded barcode string or None
         """
-        # Try different preprocessing approaches
-        attempts = [
-            roi,  # Original
-            cv2.resize(roi, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),  # Upscaled
-            cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2),  # Thresholded
-            cv2.bitwise_not(roi),  # Inverted
+        # Try different preprocessing approaches (generate on-demand to save memory)
+        attempt_generators = [
+            lambda: roi,  # Original
+            lambda: cv2.resize(roi, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),  # Upscaled
+            lambda: cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2),  # Thresholded
+            lambda: cv2.bitwise_not(roi),  # Inverted
         ]
-        
-        for attempt in attempts:
+
+        for i, gen in enumerate(attempt_generators):
+            attempt = None
             try:
+                attempt = gen()
                 results = decode(attempt, timeout=100)
                 if results:
                     # Return first successful decode
                     return results[0].data.decode('utf-8')
             except Exception:
                 continue
-        
+            finally:
+                # Clean up intermediate arrays (except original roi)
+                if attempt is not None and i > 0:
+                    del attempt
+
+        # Force garbage collection to free memory
+        gc.collect()
         return None
     
     def scan_plate(self, image_path: str, apply_distortion_correction: bool = True,
@@ -348,45 +357,48 @@ class BarcodeScanner:
     def scan_frame_streaming(self, frames_iter, total_frames: int,
                              apply_distortion_correction: bool = False,
                              k1: float = -0.15, k2: float = 0.05,
-                             progress_callback=None, best_frames_dir: Optional[str] = None):
+                             progress_callback=None, best_frames_dir: Optional[str] = None,
+                             max_cached_frames: int = 5):
         """
         Memory-efficient streaming scan that processes frames one at a time.
-        
+
         Instead of keeping all frames in memory, this:
         1. Processes each frame immediately
         2. Keeps only the best barcode per well with confidence metadata
         3. Optionally saves the best frames to disk instead of memory
         4. Returns a composite of the best regions without full focus stacking
-        
+
         Args:
-            frames_iter: Iterator yielding (frame_index, frame) tuples
+            frames_iter: Iterator yielding (frame_index, focus_val, frame) tuples
             total_frames: Total number of frames to process
             apply_distortion_correction: Whether to apply lens correction
             k1, k2: Distortion coefficients
             progress_callback: Optional callback(current, total, message)
             best_frames_dir: If set, saves best frames to disk instead of keeping in memory
-            
+            max_cached_frames: Maximum number of frames to keep in memory (default 5)
+
         Returns:
             (merged_results, metadata, best_composite_frame)
         """
         # Track best result per well with confidence score
         # Format: {well_id: (barcode, confidence_score, frame_index)}
         best_results: Dict[str, Tuple[Optional[str], float, int]] = {
-            f"{row}{col}": (None, 0.0, -1) 
-            for row in self.ROWS 
+            f"{row}{col}": (None, 0.0, -1)
+            for row in self.ROWS
             for col in range(1, self.cols + 1)
         }
-        
+
         metadata = []
         best_overall_frame = None
         best_overall_score = -1.0
-        
+
         # For composite building - track which frame had best focus per well region
         # Instead of pixel-wise focus stacking, we use well-wise selection
         well_frame_assignments: Dict[str, int] = {}
         frame_cache: Dict[int, np.ndarray] = {} if best_frames_dir is None else None
-        
-        for position, (frame_index, frame) in enumerate(frames_iter, start=1):
+        cached_frame_scores: Dict[int, float] = {}  # Track scores for cache eviction
+
+        for position, (frame_index, focus_val, frame) in enumerate(frames_iter, start=1):
             # Calculate focus score for this frame
             focus_score = self.calculate_focus_score(frame)
             
@@ -400,8 +412,8 @@ class BarcodeScanner:
                     best_overall_frame = frame  # Keep reference temporarily
             
             if progress_callback:
-                progress_callback(position, total_frames, 
-                    f"Scanning frame {frame_index}/{total_frames} (Focus: {focus_score:.1f})")
+                progress_callback(position, total_frames,
+                    f"Scanning frame {frame_index}/{total_frames} (Focus: {focus_val})")
             
             # Process frame immediately
             frame_results = self.scan_frame(
@@ -414,6 +426,7 @@ class BarcodeScanner:
             decoded_count = sum(1 for value in frame_results.values() if value)
             metadata.append({
                 "frame_index": frame_index,
+                "focus_val": focus_val,
                 "focus_score": focus_score,
                 "decoded_count": decoded_count,
             })
@@ -429,9 +442,18 @@ class BarcodeScanner:
                     best_results[well_id] = (barcode, confidence, frame_index)
                     well_frame_assignments[well_id] = frame_index
                     
-                    # Save frame reference if needed for composite
-                    if best_frames_dir is None and frame_index not in frame_cache:
-                        frame_cache[frame_index] = frame.copy()
+                    # Save frame reference if needed for composite (with size limit)
+                    if best_frames_dir is None:
+                        # If cache is full, evict lowest score frame
+                        if len(frame_cache) >= max_cached_frames and frame_index not in frame_cache:
+                            # Find frame with lowest score to evict
+                            worst_frame_idx = min(cached_frame_scores, key=cached_frame_scores.get)
+                            del frame_cache[worst_frame_idx]
+                            del cached_frame_scores[worst_frame_idx]
+                        # Add/update frame in cache
+                        if frame_index not in frame_cache:
+                            frame_cache[frame_index] = frame.copy()
+                        cached_frame_scores[frame_index] = confidence
             
             # If using disk storage, save frame if it decoded well
             if best_frames_dir and decoded_count > 0:
@@ -439,7 +461,13 @@ class BarcodeScanner:
                 cv2.imwrite(frame_path, frame)
                 if focus_score > best_overall_score:
                     best_overall_frame = frame
-        
+
+            # Explicitly delete frame to free memory (generator will create new one)
+            del frame
+            # Periodic garbage collection every 10 frames
+            if position % 10 == 0:
+                gc.collect()
+
         # Build final merged results
         merged_results = {well_id: data[0] for well_id, data in best_results.items()}
         
@@ -469,6 +497,8 @@ class BarcodeScanner:
         # Clear memory
         if frame_cache is not None:
             frame_cache.clear()
+        if cached_frame_scores is not None:
+            cached_frame_scores.clear()
         
         return merged_results, metadata, composite
 
@@ -493,7 +523,8 @@ class BarcodeScanner:
             for idx, path in enumerate(image_paths, start=1):
                 frame = self.read_image(path)
                 if frame is not None:
-                    yield (idx, frame)
+                    # Use idx as focus_val for file scanning (no hardware focus)
+                    yield (idx, idx, frame)
                 # Frame goes out of scope and can be garbage collected
         
         return self.scan_frame_streaming(

@@ -19,7 +19,7 @@ from main import BarcodeScanner
 class BarcodeScannerGUI:
     """GUI for the barcode scanner application."""
 
-    PREVIEW_SIZE = (1920, 1080)
+    PREVIEW_SIZE = (1536, 864)
 
     def __init__(self, root):
         self.root = root
@@ -145,7 +145,7 @@ class BarcodeScannerGUI:
         self.scan_sweep_btn.grid(row=6, column=0, pady=5, sticky=(tk.W, tk.E))
 
         ttk.Separator(control_frame, orient="horizontal").grid(
-            row=6, column=0, pady=10, sticky=(tk.W, tk.E)
+            row=7, column=0, pady=10, sticky=(tk.W, tk.E)
         )
 
         # --- MANUAL FOCUS CONTROL ---
@@ -174,7 +174,7 @@ class BarcodeScannerGUI:
 
         # --- MANUAL EXPOSURE CONTROL ---
         ttk.Label(control_frame, text="Manual Exposure:").grid(row=10, column=0, pady=(10, 0), sticky=tk.W)
-        self.manual_exposure_var = tk.IntVar(value=-4)
+        self.manual_exposure_var = tk.IntVar(value=-7)
         self.manual_exposure_scale = ttk.Scale(
             control_frame,
             from_=-13,
@@ -198,20 +198,20 @@ class BarcodeScannerGUI:
         # ----------------------------
 
         # --- NEW HARDWARE FOCUS CONTROLS ---
-        ttk.Label(control_frame, text="Focus Sweep Start (e.g. 40):").grid(row=13, column=0, pady=(10, 0), sticky=tk.W)
-        self.focus_start_var = tk.IntVar(value=40)
+        ttk.Label(control_frame, text="Focus Sweep Start (e.g. 400):").grid(row=13, column=0, pady=(10, 0), sticky=tk.W)
+        self.focus_start_var = tk.IntVar(value=400)
         ttk.Spinbox(control_frame, from_=0, to=1024, textvariable=self.focus_start_var, width=6).grid(
             row=14, column=0, pady=5, sticky=tk.W
         )
 
-        ttk.Label(control_frame, text="Focus Sweep End (e.g. 100):").grid(row=15, column=0, pady=(10, 0), sticky=tk.W)
-        self.focus_end_var = tk.IntVar(value=100)
+        ttk.Label(control_frame, text="Focus Sweep End (e.g. 500):").grid(row=15, column=0, pady=(10, 0), sticky=tk.W)
+        self.focus_end_var = tk.IntVar(value=500)
         ttk.Spinbox(control_frame, from_=0, to=1024, textvariable=self.focus_end_var, width=6).grid(
             row=16, column=0, pady=5, sticky=tk.W
         )
 
         ttk.Label(control_frame, text="Sweep frames (steps):").grid(row=17, column=0, pady=(10, 0), sticky=tk.W)
-        self.sweep_count_var = tk.IntVar(value=7)
+        self.sweep_count_var = tk.IntVar(value=100)
         ttk.Spinbox(control_frame, from_=1, to=25, increment=1, textvariable=self.sweep_count_var, width=6).grid(
             row=18, column=0, pady=5, sticky=tk.W
         )
@@ -538,6 +538,7 @@ class BarcodeScannerGUI:
         state = "disabled" if busy else "normal"
         self.select_btn.configure(state=state)
         self.scan_btn.configure(state=state if self.current_image_path else "disabled")
+        self.scan_sweep_btn.configure(state=state)
         self.capture_scan_btn.configure(
             state="disabled" if busy or not self.preview_running else "normal"
         )
@@ -720,7 +721,7 @@ class BarcodeScannerGUI:
                         # 4. Capture frame
                         ok, frame = self.capture.read()
                         if ok and frame is not None:
-                            yield (index + 1, frame)
+                            yield (index + 1, focus_val, frame)
                         # Frame goes out of scope, can be garbage collected
                 
                 # Process using streaming method
@@ -871,6 +872,125 @@ class BarcodeScannerGUI:
             messagebox.showerror("Error", f"Scan failed:\n{str(exc)}")
             self.phase_var.set("Failed")
             self.status_var.set("Image scan failed")
+
+    def scan_sweep_files(self):
+        """Scan multiple saved sweep files using memory-efficient streaming."""
+        filetypes = [
+            ("JPEG files", "*.jpg *.jpeg"),
+            ("All image files", "*.png *.jpg *.jpeg *.bmp *.tiff"),
+            ("All files", "*.*"),
+        ]
+        
+        filenames = filedialog.askopenfilenames(
+            title="Select Sweep Files (multiple selection allowed)",
+            filetypes=filetypes
+        )
+        
+        if not filenames:
+            return
+        
+        # Sort filenames to process in order
+        image_paths = sorted(list(filenames))
+        
+        if len(image_paths) == 0:
+            messagebox.showwarning("Warning", "No files selected")
+            return
+        
+        # Confirm for large batches
+        if len(image_paths) > 50:
+            if not messagebox.askyesno(
+                "Large Batch", 
+                f"You selected {len(image_paths)} files. This may take a while. Continue?"
+            ):
+                return
+        
+        # Run scan in background thread
+        if self.scan_thread and self.scan_thread.is_alive():
+            messagebox.showwarning("Warning", "A scan is already in progress")
+            return
+        
+        self.progress_var.set(0)
+        self.phase_var.set("Preparing streaming scan")
+        self.status_var.set(f"Scanning {len(image_paths)} files using streaming mode")
+        self.capture_info_var.set(
+            f"Processing {len(image_paths)} images with memory-efficient streaming. "
+            "Each image is loaded, scanned, and immediately released from memory."
+        )
+        self.set_busy(True)
+        self.scan_thread = threading.Thread(
+            target=self._run_sweep_files_scan,
+            args=(image_paths,),
+            daemon=True
+        )
+        self.scan_thread.start()
+    
+    def _run_sweep_files_scan(self, image_paths):
+        """Background thread for scanning sweep files."""
+        try:
+            apply_correction = self.distortion_var.get()
+            k1 = self.k1_var.get()
+            k2 = self.k2_var.get()
+            
+            # Use the streaming method to process files one at a time
+            results, metadata, composite = self.scanner.scan_plate_from_files_streaming(
+                image_paths,
+                apply_distortion_correction=apply_correction,
+                k1=k1,
+                k2=k2,
+                progress_callback=lambda current, total, message: self.root.after(
+                    0,
+                    self.update_progress,
+                    (current / total) * 90,
+                    f"Scanning {current}/{total}",
+                    message,
+                ),
+            )
+            
+            self.last_stack_metadata = metadata
+            detected = sum(1 for value in results.values() if value)
+            
+            # Save composite to temp file for display
+            if composite is not None:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
+                    composite_path = temp_file.name
+                cv2.imwrite(composite_path, composite)
+                self.current_image_path = composite_path
+                self.root.after(0, self.load_image, composite_path)
+            
+            self.current_results = results
+            self.root.after(0, self.display_results, results)
+            self.root.after(0, lambda: self.export_txt_btn.configure(state="normal"))
+            self.root.after(0, lambda: self.export_csv_btn.configure(state="normal"))
+            self.root.after(0, lambda: self.scan_btn.configure(state="normal"))
+            
+            # Create summary
+            best_frames = sorted(
+                metadata,
+                key=lambda item: item.get("decoded_count", 0),
+                reverse=True,
+            )[:3]
+            best_text = ", ".join(
+                f"frame {item['frame_index']} -> {item['decoded_count']}"
+                for item in best_frames
+            ) or "no decodes"
+            
+            summary = (
+                f"Streaming scan of {len(image_paths)} files complete. "
+                f"Best frames: {best_text}. Detected {detected}/96 barcodes."
+            )
+            self.root.after(0, self.capture_info_var.set, summary)
+            self.root.after(
+                0,
+                self.update_progress,
+                100,
+                "Complete",
+                f"Sweep scan complete: {detected}/96 barcodes found",
+            )
+        except Exception as exc:
+            self.root.after(0, messagebox.showerror, "Error", f"Sweep scan failed:\n{str(exc)}")
+            self.root.after(0, self.update_progress, 0, "Failed", "Sweep scan failed")
+        finally:
+            self.root.after(0, self.set_busy, False)
 
     def display_results(self, results):
         """Display scan results in the GUI."""
