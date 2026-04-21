@@ -259,23 +259,162 @@ class BarcodeScannerGUI:
         self.k2_label.grid(row=27, column=0, sticky=tk.W)
         self.k2_scale.configure(command=lambda v: self.k2_label.configure(text=f"{float(v):.2f}"))
 
+        # --- WELL MARGIN CONTROL ---
+        ttk.Label(control_frame, text="Well Margin (0-0.5):").grid(row=28, column=0, pady=(10, 0), sticky=tk.W)
+        self.well_margin_var = tk.DoubleVar(value=0.0)
+        self.well_margin_scale = ttk.Scale(
+            control_frame,
+            from_=0.0,
+            to=0.5,
+            variable=self.well_margin_var,
+            orient="horizontal",
+        )
+        self.well_margin_scale.grid(row=29, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.well_margin_label = ttk.Label(control_frame, text="0.00")
+        self.well_margin_label.grid(row=30, column=0, sticky=tk.W)
+        self.well_margin_scale.configure(command=lambda v: self.well_margin_label.configure(text=f"{float(v):.2f}"))
+
+        # --- DECODE TIMEOUT CONTROL ---
+        ttk.Label(control_frame, text="Decode Timeout (ms):").grid(row=31, column=0, pady=(10, 0), sticky=tk.W)
+        self.decode_timeout_var = tk.IntVar(value=200)
+        self.decode_timeout_spinbox = tk.Spinbox(
+            control_frame,
+            from_=50,
+            to=500,
+            increment=50,
+            textvariable=self.decode_timeout_var,
+            width=8
+        )
+        self.decode_timeout_spinbox.grid(row=32, column=0, pady=5, sticky=tk.W)
+
+        # --- CLAHE CONTROL ---
+        self.apply_clahe_var = tk.BooleanVar(value=True)
+        self.apply_clahe_check = ttk.Checkbutton(
+            control_frame,
+            text="Apply CLAHE",
+            variable=self.apply_clahe_var,
+        )
+        self.apply_clahe_check.grid(row=33, column=0, pady=5, sticky=tk.W)
+
+        ttk.Label(control_frame, text="CLAHE Clip Limit:").grid(row=34, column=0, pady=(5, 0), sticky=tk.W)
+        self.clahe_limit_var = tk.DoubleVar(value=2.0)
+        self.clahe_limit_scale = ttk.Scale(
+            control_frame,
+            from_=0.5,
+            to=4.0,
+            variable=self.clahe_limit_var,
+            orient="horizontal",
+        )
+        self.clahe_limit_scale.grid(row=35, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.clahe_limit_label = ttk.Label(control_frame, text="2.0")
+        self.clahe_limit_label.grid(row=36, column=0, sticky=tk.W)
+        self.clahe_limit_scale.configure(command=lambda v: self.clahe_limit_label.configure(text=f"{float(v):.1f}"))
+
+        # --- DENOISING CONTROL ---
+        self.apply_denoise_var = tk.BooleanVar(value=True)
+        self.apply_denoise_check = ttk.Checkbutton(
+            control_frame,
+            text="Apply Denoising",
+            variable=self.apply_denoise_var,
+        )
+        self.apply_denoise_check.grid(row=37, column=0, pady=5, sticky=tk.W)
+
+        ttk.Label(control_frame, text="Denoise Strength:").grid(row=38, column=0, pady=(5, 0), sticky=tk.W)
+        self.denoise_strength_var = tk.IntVar(value=10)
+        self.denoise_strength_scale = ttk.Scale(
+            control_frame,
+            from_=0,
+            to=20,
+            variable=self.denoise_strength_var,
+            orient="horizontal",
+        )
+        self.denoise_strength_scale.grid(row=39, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.denoise_strength_label = ttk.Label(control_frame, text="10")
+        self.denoise_strength_label.grid(row=40, column=0, sticky=tk.W)
+        self.denoise_strength_scale.configure(command=lambda v: self.denoise_strength_label.configure(text=f"{int(float(v))}"))
+
+        # --- HIGH RECALL GEOMETRY CONTROLS ---
+        ttk.Label(control_frame, text="Rotation Step (deg):").grid(row=41, column=0, pady=(10, 0), sticky=tk.W)
+        self.rotation_step_var = tk.DoubleVar(value=7.5)
+        self.rotation_step_scale = ttk.Scale(
+            control_frame,
+            from_=1.0,
+            to=30.0,
+            variable=self.rotation_step_var,
+            orient="horizontal",
+        )
+        self.rotation_step_scale.grid(row=42, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.rotation_step_label = ttk.Label(control_frame, text="7.5")
+        self.rotation_step_label.grid(row=43, column=0, sticky=tk.W)
+        self.rotation_step_scale.configure(command=lambda v: self.rotation_step_label.configure(text=f"{float(v):.1f}"))
+
+        ttk.Label(control_frame, text="Rotation Range (deg):").grid(row=44, column=0, pady=(5, 0), sticky=tk.W)
+        self.rotation_range_var = tk.DoubleVar(value=45.0)
+        self.rotation_range_scale = ttk.Scale(
+            control_frame,
+            from_=0.0,
+            to=89.0,
+            variable=self.rotation_range_var,
+            orient="horizontal",
+        )
+        self.rotation_range_scale.grid(row=45, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.rotation_range_label = ttk.Label(control_frame, text="45.0")
+        self.rotation_range_label.grid(row=46, column=0, sticky=tk.W)
+        self.rotation_range_scale.configure(command=lambda v: self.rotation_range_label.configure(text=f"{float(v):.1f}"))
+
+        ttk.Label(control_frame, text="ROI Shift Fraction:").grid(row=47, column=0, pady=(5, 0), sticky=tk.W)
+        self.roi_shift_var = tk.DoubleVar(value=0.08)
+        self.roi_shift_scale = ttk.Scale(
+            control_frame,
+            from_=0.0,
+            to=0.25,
+            variable=self.roi_shift_var,
+            orient="horizontal",
+        )
+        self.roi_shift_scale.grid(row=48, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.roi_shift_label = ttk.Label(control_frame, text="0.08")
+        self.roi_shift_label.grid(row=49, column=0, sticky=tk.W)
+        self.roi_shift_scale.configure(command=lambda v: self.roi_shift_label.configure(text=f"{float(v):.2f}"))
+
+        ttk.Label(control_frame, text="ROI Padding Fraction:").grid(row=50, column=0, pady=(5, 0), sticky=tk.W)
+        self.roi_padding_var = tk.DoubleVar(value=0.16)
+        self.roi_padding_scale = ttk.Scale(
+            control_frame,
+            from_=0.0,
+            to=0.40,
+            variable=self.roi_padding_var,
+            orient="horizontal",
+        )
+        self.roi_padding_scale.grid(row=51, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.roi_padding_label = ttk.Label(control_frame, text="0.16")
+        self.roi_padding_label.grid(row=52, column=0, sticky=tk.W)
+        self.roi_padding_scale.configure(command=lambda v: self.roi_padding_label.configure(text=f"{float(v):.2f}"))
+
+        self.save_heatmap_var = tk.BooleanVar(value=True)
+        self.save_heatmap_check = ttk.Checkbutton(
+            control_frame,
+            text="Save Decode Heatmap",
+            variable=self.save_heatmap_var,
+        )
+        self.save_heatmap_check.grid(row=53, column=0, pady=5, sticky=tk.W)
+
         ttk.Separator(control_frame, orient="horizontal").grid(
-            row=28, column=0, pady=10, sticky=(tk.W, tk.E))
+            row=54, column=0, pady=10, sticky=(tk.W, tk.E))
 
         self.progress_var = tk.DoubleVar(value=0)
         self.progress = ttk.Progressbar(control_frame, variable=self.progress_var, maximum=100)
-        self.progress.grid(row=29, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.progress.grid(row=55, column=0, pady=5, sticky=(tk.W, tk.E))
 
         self.phase_var = tk.StringVar(value="Idle")
-        ttk.Label(control_frame, text="Current phase:").grid(row=30, column=0, sticky=tk.W)
+        ttk.Label(control_frame, text="Current phase:").grid(row=56, column=0, sticky=tk.W)
         ttk.Label(control_frame, textvariable=self.phase_var, foreground="darkgreen").grid(
-            row=31, column=0, pady=3, sticky=tk.W
+            row=57, column=0, pady=3, sticky=tk.W
         )
 
         self.status_var = tk.StringVar(value="Ready")
-        ttk.Label(control_frame, text="Status:").grid(row=32, column=0, sticky=tk.W)
+        ttk.Label(control_frame, text="Status:").grid(row=58, column=0, sticky=tk.W)
         ttk.Label(control_frame, textvariable=self.status_var, foreground="blue", wraplength=240).grid(
-            row=33, column=0, pady=3, sticky=tk.W
+            row=59, column=0, pady=3, sticky=tk.W
         )
 
         self.export_txt_btn = ttk.Button(
@@ -284,7 +423,7 @@ class BarcodeScannerGUI:
             command=lambda: self.export_results("txt"),
             state="disabled",
         )
-        self.export_txt_btn.grid(row=34, column=0, pady=(10, 5), sticky=(tk.W, tk.E))
+        self.export_txt_btn.grid(row=60, column=0, pady=(10, 5), sticky=(tk.W, tk.E))
 
         self.export_csv_btn = ttk.Button(
             control_frame,
@@ -292,7 +431,7 @@ class BarcodeScannerGUI:
             command=lambda: self.export_results("csv"),
             state="disabled",
         )
-        self.export_csv_btn.grid(row=35, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.export_csv_btn.grid(row=61, column=0, pady=5, sticky=(tk.W, tk.E))
 
     def setup_image_panel(self):
         """Setup the middle image preview panel."""
@@ -417,8 +556,8 @@ class BarcodeScannerGUI:
             messagebox.showerror("Camera Error", f"Could not open camera index {camera_index}")
             return
 
-        capture.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
-        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, 4656)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 3496)
         capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         # Disable autofocus immediately so we can control it manually
@@ -685,6 +824,16 @@ class BarcodeScannerGUI:
             apply_correction = self.distortion_var.get()
             k1 = self.k1_var.get()
             k2 = self.k2_var.get()
+            well_margin = self.well_margin_var.get()
+            decode_timeout = self.decode_timeout_var.get()
+            apply_clahe = self.apply_clahe_var.get()
+            clahe_limit = self.clahe_limit_var.get()
+            apply_denoise = self.apply_denoise_var.get()
+            denoise_strength = self.denoise_strength_var.get()
+            rotation_step = self.rotation_step_var.get()
+            rotation_range = self.rotation_range_var.get()
+            roi_shift = self.roi_shift_var.get()
+            roi_padding = self.roi_padding_var.get()
             # Default preview scale since selector was removed
             preview_scale = 0.70
 
@@ -738,6 +887,16 @@ class BarcodeScannerGUI:
                         "Analyzing (streaming)",
                         message,
                     ),
+                    well_margin=well_margin,
+                    decode_timeout=decode_timeout,
+                    apply_clahe=apply_clahe,
+                    clahe_clip_limit=clahe_limit,
+                    apply_denoise=apply_denoise,
+                    denoise_strength=denoise_strength,
+                    rotation_step_deg=rotation_step,
+                    rotation_range_deg=rotation_range,
+                    roi_shift_fraction=roi_shift,
+                    roi_padding_fraction=roi_padding,
                 )
                 
                 # Build metadata for summary
@@ -796,10 +955,21 @@ class BarcodeScannerGUI:
                         "Analyzing frame stack",
                         message,
                     ),
+                    well_margin=well_margin,
+                    decode_timeout=decode_timeout,
+                    apply_clahe=apply_clahe,
+                    clahe_clip_limit=clahe_limit,
+                    apply_denoise=apply_denoise,
+                    denoise_strength=denoise_strength,
+                    rotation_step_deg=rotation_step,
+                    rotation_range_deg=rotation_range,
+                    roi_shift_fraction=roi_shift,
+                    roi_padding_fraction=roi_padding,
                 )
 
             self.last_stack_metadata = stack_metadata
             detected = sum(1 for value in results.values() if value)
+            heatmap_path = self.save_heatmap_if_enabled(output_dir=os.getcwd(), prefix="live")
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
                 composite_path = temp_file.name
@@ -822,7 +992,9 @@ class BarcodeScannerGUI:
                 self.update_progress,
                 100,
                 "Complete",
-                f"Live scan complete: {detected}/96 barcodes found" + (" (streaming mode)" if use_streaming else ""),
+                f"Live scan complete: {detected}/96 barcodes found"
+                + (" (streaming mode)" if use_streaming else "")
+                + (f" | Heatmap: {os.path.basename(heatmap_path)}" if heatmap_path else ""),
             )
         except Exception as exc:
             self.root.after(0, messagebox.showerror, "Error", f"Live scan failed:\n{str(exc)}")
@@ -851,12 +1023,32 @@ class BarcodeScannerGUI:
             k1 = self.k1_var.get()
             k2 = self.k2_var.get()
             use_correction = self.distortion_var.get()
+            well_margin = self.well_margin_var.get()
+            decode_timeout = self.decode_timeout_var.get()
+            apply_clahe = self.apply_clahe_var.get()
+            clahe_limit = self.clahe_limit_var.get()
+            apply_denoise = self.apply_denoise_var.get()
+            denoise_strength = self.denoise_strength_var.get()
+            rotation_step = self.rotation_step_var.get()
+            rotation_range = self.rotation_range_var.get()
+            roi_shift = self.roi_shift_var.get()
+            roi_padding = self.roi_padding_var.get()
 
             results = self.scanner.scan_plate(
                 self.current_image_path,
                 apply_distortion_correction=use_correction,
                 k1=k1,
                 k2=k2,
+                well_margin=well_margin,
+                decode_timeout=decode_timeout,
+                apply_clahe=apply_clahe,
+                clahe_clip_limit=clahe_limit,
+                apply_denoise=apply_denoise,
+                denoise_strength=denoise_strength,
+                rotation_step_deg=rotation_step,
+                rotation_range_deg=rotation_range,
+                roi_shift_fraction=roi_shift,
+                roi_padding_fraction=roi_padding,
             )
 
             self.current_results = results
@@ -865,9 +1057,16 @@ class BarcodeScannerGUI:
             self.export_csv_btn.configure(state="normal")
 
             detected = sum(1 for value in results.values() if value is not None)
+            heatmap_path = self.save_heatmap_if_enabled(
+                output_dir=os.path.dirname(self.current_image_path) if self.current_image_path else os.getcwd(),
+                prefix="single",
+            )
             self.progress_var.set(100)
             self.phase_var.set("Complete")
-            self.status_var.set(f"Image scan complete: {detected}/96 barcodes found")
+            status = f"Image scan complete: {detected}/96 barcodes found"
+            if heatmap_path:
+                status += f" | Heatmap: {os.path.basename(heatmap_path)}"
+            self.status_var.set(status)
         except Exception as exc:
             messagebox.showerror("Error", f"Scan failed:\n{str(exc)}")
             self.phase_var.set("Failed")
@@ -930,6 +1129,16 @@ class BarcodeScannerGUI:
             apply_correction = self.distortion_var.get()
             k1 = self.k1_var.get()
             k2 = self.k2_var.get()
+            well_margin = self.well_margin_var.get()
+            decode_timeout = self.decode_timeout_var.get()
+            apply_clahe = self.apply_clahe_var.get()
+            clahe_limit = self.clahe_limit_var.get()
+            apply_denoise = self.apply_denoise_var.get()
+            denoise_strength = self.denoise_strength_var.get()
+            rotation_step = self.rotation_step_var.get()
+            rotation_range = self.rotation_range_var.get()
+            roi_shift = self.roi_shift_var.get()
+            roi_padding = self.roi_padding_var.get()
             
             # Use the streaming method to process files one at a time
             results, metadata, composite = self.scanner.scan_plate_from_files_streaming(
@@ -944,6 +1153,16 @@ class BarcodeScannerGUI:
                     f"Scanning {current}/{total}",
                     message,
                 ),
+                well_margin=well_margin,
+                decode_timeout=decode_timeout,
+                apply_clahe=apply_clahe,
+                clahe_clip_limit=clahe_limit,
+                apply_denoise=apply_denoise,
+                denoise_strength=denoise_strength,
+                rotation_step_deg=rotation_step,
+                rotation_range_deg=rotation_range,
+                roi_shift_fraction=roi_shift,
+                roi_padding_fraction=roi_padding,
             )
             
             self.last_stack_metadata = metadata
@@ -962,6 +1181,10 @@ class BarcodeScannerGUI:
             self.root.after(0, lambda: self.export_txt_btn.configure(state="normal"))
             self.root.after(0, lambda: self.export_csv_btn.configure(state="normal"))
             self.root.after(0, lambda: self.scan_btn.configure(state="normal"))
+            heatmap_path = self.save_heatmap_if_enabled(
+                output_dir=os.path.dirname(image_paths[0]) if image_paths else os.getcwd(),
+                prefix="sweep",
+            )
             
             # Create summary
             best_frames = sorted(
@@ -984,13 +1207,31 @@ class BarcodeScannerGUI:
                 self.update_progress,
                 100,
                 "Complete",
-                f"Sweep scan complete: {detected}/96 barcodes found",
+                f"Sweep scan complete: {detected}/96 barcodes found"
+                + (f" | Heatmap: {os.path.basename(heatmap_path)}" if heatmap_path else ""),
             )
         except Exception as exc:
             self.root.after(0, messagebox.showerror, "Error", f"Sweep scan failed:\n{str(exc)}")
             self.root.after(0, self.update_progress, 0, "Failed", "Sweep scan failed")
         finally:
             self.root.after(0, self.set_busy, False)
+
+    def save_heatmap_if_enabled(self, output_dir=None, prefix="scan"):
+        """Save latest decode heatmap image if enabled by user."""
+        if not self.save_heatmap_var.get():
+            return None
+
+        if output_dir is None:
+            output_dir = os.getcwd()
+
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            output_path = os.path.join(output_dir, f"{prefix}_decode_heatmap_{timestamp}.png")
+            return self.scanner.save_last_decode_heatmap(output_path)
+        except Exception as exc:
+            print(f"Could not save heatmap: {exc}")
+            return None
 
     def display_results(self, results):
         """Display scan results in the GUI."""
