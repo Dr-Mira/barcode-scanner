@@ -2,6 +2,14 @@
 
 A Python application that decodes Data Matrix barcodes from a 96-well Eppendorf rack image (A1-H12).
 
+### Core Method (Math + Script Flow)
+
+- **DataMatrix engine**: Uses `pylibdmtx`/libdmtx to decode **Data Matrix ECC200** symbols.
+- **Sweep + stitch strategy**: For multi-frame scans, the scanner sweeps across frames and keeps the best per-well decode, then builds a stitched composite from best regions.
+- **Clever zooming**: Each ROI is decoded at multiple scales (`1.0`, `1.5`, `2.0`, `3.0`) to recover small or blurry codes.
+- **Geometric correction math**: Applies radial lens correction with OpenCV camera model (`k1`, `k2`) and optional perspective normalization.
+- **Robust decode pass**: Tries ROI shifts/padding, multiple preprocess variants (CLAHE, Otsu/adaptive thresholding, sharpen/morph ops), and rotation sweeps around cardinal angles to maximize recall.
+
 ## Configuration
 
 ### Lens Distortion Parameters
