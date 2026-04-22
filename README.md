@@ -3,7 +3,7 @@
 A Python application that decodes Data Matrix barcodes from a 96-well Eppendorf rack image (A1-H12).
 
 <p align="center">
-  <img src="banner.jpg" alt="96-Well Rack Barcode Scanner Banner" width="50%" />
+  <img src="banner.jpg" alt="96-Well Rack Barcode Scanner Banner" width="100%" />
 </p>
 
 - Uses `pylibdmtx`/libdmtx to decode **Data Matrix ECC200** symbols.
