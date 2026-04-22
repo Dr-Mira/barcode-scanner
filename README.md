@@ -2,6 +2,10 @@
 
 A Python application that decodes Data Matrix barcodes from a 96-well Eppendorf rack image (A1-H12).
 
+<p align="center">
+  <img src="banner.jpg" alt="96-Well Rack Barcode Scanner Banner" width="50%" />
+</p>
+
 - Uses `pylibdmtx`/libdmtx to decode **Data Matrix ECC200** symbols.
 - Software controls the camera to make photos across different focal depths and keeps the best per-well, then builds a stitched composite from those best regions of interest (ROI).
 - Each ROI is decoded at multiple scales (`1.0`, `1.5`, `2.0`, `3.0`) to recover small or blurry codes.
